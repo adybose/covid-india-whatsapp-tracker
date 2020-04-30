@@ -1,0 +1,26 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[dev-packages]
+ipython = "*"
+black = "*"
+isort = "*"
+autoflake = "*"
+pudb = "*"
+
+[packages]
+requests = "*"
+flask = "*"
+twilio = "*"
+geopy = "*"
+
+[requires]
+python_version = "3.8"
+
+[pipenv]
+allow_prereleases = true
+
+[scripts]
+lint = "./lint.sh"
