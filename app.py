@@ -98,11 +98,15 @@ Say *hi* to begin an interaction with me anytime.
         district = district.replace(district, constants.districts.get(district, district))
         district_data = get_district_data(states_with_district_list, district, state)
         district_data_message = get_district_data_message(district_data)
-        msg.body(district_data_message)
+        extra = f'''
+\nType *Distance* to get the distance from the closest detected active case in your State from your location.
+Type *Services* to see the essential services available in your region.
+'''
+        msg.body(district_data_message+extra)
         responded = True
 
     if 'services' in incoming_msg:
-        # TODO: Get services from nearest city or district or state or PAN India
+        # TODO: Get services from district or PAN State (All Districts) or PAN India
         # some cities are named differently in the resources.json API, eg Delhi
         # if a city is not found, set district city as the city in resources.json
         # if district city not found in resources.json, get nearest city from resources.json in the state
@@ -121,7 +125,6 @@ Say *hi* to begin an interaction with me anytime.
         state_in_resources = state.replace(state, constants.states_from_resources.get(state, state))
         services_list_by_state = get_essential_services(services_list, "state", state_in_resources)
         # if services_list_by_state is [], it means state not found in resources.json. Use state="PAN India" in that case
-        # in that case, mention "We don't have any information on this state, getting information from PAN India
         # pan india also has city as pan state, so no need to filter by city again
 
         city = geo_location_dict.get('city', '')
@@ -129,35 +132,70 @@ Say *hi* to begin an interaction with me anytime.
             city = geo_location_dict.get('state_district', '')
         city_in_resources = city.replace(city, constants.districts.get(city, city))
         if services_list_by_state:  # non empty
-            if city_in_resources in [each['city'] for each in services_list_by_state]:
+            cities_in_state_in_resources = [each['city'] for each in services_list_by_state]
+            if city_in_resources in cities_in_state_in_resources:
                 services_list_by_city = get_essential_services(services_list_by_state, "city", city_in_resources)
                 services_dict_by_category = get_services_by_category(services_list_by_city)
                 services_keys = [each for each in services_dict_by_category.keys()]
-                context = {"flow": "choose_services",
-                           "services": services_dict_by_category,
-                           "keys": services_keys,
-                           "location": city_in_resources,
-                           "location_type": "city_in_resources"}
+                context = {
+                    "services": services_dict_by_category,
+                    "keys": services_keys,
+                    "location": city_in_resources
+                }
                 with open('temp.json', 'w') as fp:
                     json.dump({"address": geo_location_dict, "context": context}, fp)
                 services_menu = get_services_menu(services_keys, city_in_resources)
                 msg.body(services_menu)
                 responded = True
-
-            else:  # city not found in essential services list for the given state
-                context = {"flow": "choose_service_location",
-                           "services": services_list_by_state,
-                           "location": state_in_resources,
-                           "location_from": city_in_resources,
-                           "location_type": "state_in_resources"
-                           }
+            elif "PAN State" in cities_in_state_in_resources:
+                # city not found in essential services list for the given state use PAN state
+                services_list_by_city = get_essential_services(services_list_by_state, "city", "PAN State")
+                services_dict_by_category = get_services_by_category(services_list_by_city)
+                services_keys = [each for each in services_dict_by_category.keys()]
+                context = {
+                    "services": services_dict_by_category,
+                    "keys": services_keys,
+                    "location": "PAN State"
+                }
                 with open('temp.json', 'w') as fp:
                     json.dump({"address": geo_location_dict, "context": context}, fp)
-                msg.body("Sorry, we don't have any information about essential services in your City/location."
-                         "Reply with the number corresponding to the location to find any services from:"
-                         "Choose from nearby city or PAN State by replying the number"
-                         "1. Nearest City"
-                         "2. PAN State")
+                services_menu = get_services_menu(services_keys, "PAN State")
+                services_menu = "Sorry, we don't have any information about essential services in your location.\n" + services_menu
+                msg.body(services_menu)
+                responded = True
+            elif "All Districts" in cities_in_state_in_resources:
+                # city not found in essential services list for the given state use PAN state
+                services_list_by_city = get_essential_services(services_list_by_state, "city", "All Districts")
+                services_dict_by_category = get_services_by_category(services_list_by_city)
+                services_keys = [each for each in services_dict_by_category.keys()]
+                context = {
+                    "services": services_dict_by_category,
+                    "keys": services_keys,
+                    "location": "All Districts"
+                }
+                with open('temp.json', 'w') as fp:
+                    json.dump({"address": geo_location_dict, "context": context}, fp)
+                services_menu = get_services_menu(services_keys, "All Districts")
+                services_menu = "Sorry, we don't have any information about essential services in your location.\n" + services_menu
+                msg.body(services_menu)
+                responded = True
+            else:  # if No PAN state service in state, show PAN India
+                services_list_by_state = get_essential_services(services_list, "state", "PAN India")
+                services_list_by_city = get_essential_services(services_list_by_state, "city", "PAN State")
+                services_dict_by_category = get_services_by_category(
+                    services_list_by_city)  # get services as a dictionary
+                # with key as service and value as a list of services with that key
+                services_keys = [each for each in services_dict_by_category.keys()]
+                context = {
+                    "services": services_dict_by_category,
+                    "keys": services_keys,
+                    "location": "PAN India",
+                }
+                with open('temp.json', 'w') as fp:
+                    json.dump({"address": geo_location_dict, "context": context}, fp)
+                services_menu = get_services_menu(services_keys, "PAN India")
+                services_menu = "Sorry, we don't have any information about essential services in your location.\n" + services_menu
+                msg.body(services_menu)
                 responded = True
 
         else:  # if services_list_by_state is empty, meaning state isn't in resources, hence choose PAN India resources
@@ -166,15 +204,15 @@ Say *hi* to begin an interaction with me anytime.
             services_dict_by_category = get_services_by_category(services_list_by_city)  # get services as a dictionary
             # with key as service and value as a list of services with that key
             services_keys = [each for each in services_dict_by_category.keys()]
-            context = {"flow": "choose_services",
-                       "services": services_dict_by_category,
-                       "keys": services_keys,
-                       "location": "PAN India",
-                       "location_type": "PAN India"}
+            context = {
+                "services": services_dict_by_category,
+                "keys": services_keys,
+                "location": "PAN India",
+            }
             with open('temp.json', 'w') as fp:
                 json.dump({"address": geo_location_dict, "context": context}, fp)
             services_menu = get_services_menu(services_keys, "PAN India")
-            service_menu = "Sorry, we don't have any information about essential services in your State.\n" + services_menu
+            services_menu = "Sorry, we don't have any information about essential services in your State.\n" + services_menu
             msg.body(services_menu)
             responded = True
 
@@ -185,21 +223,13 @@ Say *hi* to begin an interaction with me anytime.
         with open('temp.json') as json_data:
             context = json.load(json_data).get("context", {})
             print(context)
-        if context["flow"] == "choose_service_location":  # only this flow will update the context to set a city
-            if incoming_msg == str(1):  # selecting nearest city from the state; display essential services menu for nearest city in resources
-                services_list_by_state = context["services"]
-                state = context["location"]
-                geo_location = context["location_from"]
-                nearest_city_in_resources = get_nearest_city_from_geo_location_in_resources(services_list_by_state, state, geo_location)
-
-            elif incoming_msg == str(2): # displaying PAN state essential services; this is not services from all cities in the state
-                pass
-        if context["flow"] == "choose_services":
-            key = context["keys"][int(incoming_msg)-1]
-            services_list = context["services"][key]
-            services_message = get_services_message(services_list, key, context["location"])
-            msg.body(services_message)
-            responded = True
+        # TODO: Handle keys index issue.
+        # If key is outside the keys range of services, show exception message
+        key = context["keys"][int(incoming_msg)-1]
+        services_list = context["services"][key]
+        services_message = get_services_message(services_list, key, context["location"])
+        msg.body(services_message)
+        responded = True
 
     if not responded:
         msg.body('Sorry, I did not quite get that. Type *help* to learn how to interact with me.')
@@ -270,11 +300,11 @@ def get_location_message(geo_location_dict):
     district = geo_location_dict.get('state_district', '')
     state = geo_location_dict.get('state', '')
     if city:
-        address = ' ,'.join([city, district, state])
+        address = ', '.join([city, district, state])
     elif village:
-        address = ' ,'.join([village, district, state])
+        address = ', '.join([village, district, state])
     else:
-        address = ' ,'.join([district, state])
+        address = ', '.join([district, state])
     location_message = f'''
 Your detected location is {address}.
 -Type *Cases* to get the lastest cases in your current District.
@@ -344,7 +374,7 @@ Reply with the number corresponding to each service to see available services in
 def get_services_message(services_list, key, location):
     services = []
     for service in services_list:
-        phone_numbers = service["phonenumber"].split('\n')
+        phone_numbers = service["phonenumber"].split(',\n')
         # each service is a dict, and we need to extract their values
         services.append('*'+service["nameoftheorganisation"]+'*'+'\nContact: '+'*'+service["contact"]+'*'+"\nPhone: "+'*'+', '.join(phone_numbers)+'*')
     services_message = '\n'.join(str(services.index(each)+1)+". "+each for each in services)
