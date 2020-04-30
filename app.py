@@ -1,9 +1,10 @@
 from flask import Flask, request
 import requests
-from twilio.twiml.messaging_response import MessagingResponse
 from geopy.geocoders import Nominatim
 import constants
 import json
+
+from api.messaging import as_twilio_response
 
 # TODO: Type *national* to get the latest country-wide Covid-19 stats.
 # TODO: Get district-wise stats
@@ -30,9 +31,6 @@ def bot():
     geo_coordinates_string = " ,".join((latitude, longitude))
 
     incoming_msg = incoming_values.get('Body', '').lower()
-    resp = MessagingResponse()
-    msg = resp.message()
-    responded = False
 
     national_api = 'https://api.covid19india.org/data.json'
     response = get_response(national_api)
@@ -62,8 +60,7 @@ Say *hi* to begin an interaction with me anytime.
     greeting_tokens = ['hi', 'hello', 'hey']
     if incoming_msg in greeting_tokens:
         # return greeting message
-        msg.body(welcome_message)
-        responded = True
+        return as_twilio_response(welcome_message)
 
     if incoming_msg in state_names:
         # return stats
@@ -71,23 +68,20 @@ Say *hi* to begin an interaction with me anytime.
         i = state_names.index(state)
         statewise_data = statewise_data_list[i]
         statewise_data_message = get_statewise_data_message(state, statewise_data)
-        msg.body(statewise_data_message)
-        responded = True
+        return as_twilio_response(statewise_data_message)
 
     if 'help' in incoming_msg:
         # return help message
-        msg.body(help_message)
-        responded = True
+        return as_twilio_response(help_message)
 
     if latitude:
         # TODO: Replace temporary file operation with nosql DB like mongoDB
         geo_location_dict = get_reverse_geocode(geo_coordinates_string)  # tuple of city, state
         location_message = get_location_message(geo_location_dict)
-        msg.body(location_message)
         # save geo_location_dict with MessageSID on a temporary file
         with open('temp.json', 'w') as fp:
             json.dump({"address": geo_location_dict}, fp)
-        responded = True
+        return as_twilio_response(location_message)
 
     if 'cases' in incoming_msg:
         with open('temp.json') as json_data:
@@ -102,8 +96,7 @@ Say *hi* to begin an interaction with me anytime.
 \nType *Distance* to get the distance from the closest detected active case in your State from your location.
 Type *Services* to see the essential services available in your region.
 '''
-        msg.body(district_data_message+extra)
-        responded = True
+        return as_twilio_response(district_data_message+extra)
 
     if 'services' in incoming_msg:
         # TODO: Get services from district or PAN State (All Districts) or PAN India
@@ -145,8 +138,7 @@ Type *Services* to see the essential services available in your region.
                 with open('temp.json', 'w') as fp:
                     json.dump({"address": geo_location_dict, "context": context}, fp)
                 services_menu = get_services_menu(services_keys, city_in_resources)
-                msg.body(services_menu)
-                responded = True
+                return as_twilio_response(services_menu)
             elif "PAN State" in cities_in_state_in_resources:
                 # city not found in essential services list for the given state use PAN state
                 services_list_by_city = get_essential_services(services_list_by_state, "city", "PAN State")
@@ -161,8 +153,7 @@ Type *Services* to see the essential services available in your region.
                     json.dump({"address": geo_location_dict, "context": context}, fp)
                 services_menu = get_services_menu(services_keys, "PAN State")
                 services_menu = "Sorry, we don't have any information about essential services in your location.\n" + services_menu
-                msg.body(services_menu)
-                responded = True
+                return as_twilio_response(services_menu)
             elif "All Districts" in cities_in_state_in_resources:
                 # city not found in essential services list for the given state use PAN state
                 services_list_by_city = get_essential_services(services_list_by_state, "city", "All Districts")
@@ -177,8 +168,7 @@ Type *Services* to see the essential services available in your region.
                     json.dump({"address": geo_location_dict, "context": context}, fp)
                 services_menu = get_services_menu(services_keys, "All Districts")
                 services_menu = "Sorry, we don't have any information about essential services in your location.\n" + services_menu
-                msg.body(services_menu)
-                responded = True
+                return as_twilio_response(services_menu)
             else:  # if No PAN state service in state, show PAN India
                 services_list_by_state = get_essential_services(services_list, "state", "PAN India")
                 services_list_by_city = get_essential_services(services_list_by_state, "city", "PAN State")
@@ -195,8 +185,7 @@ Type *Services* to see the essential services available in your region.
                     json.dump({"address": geo_location_dict, "context": context}, fp)
                 services_menu = get_services_menu(services_keys, "PAN India")
                 services_menu = "Sorry, we don't have any information about essential services in your location.\n" + services_menu
-                msg.body(services_menu)
-                responded = True
+                return as_twilio_response(services_menu)
 
         else:  # if services_list_by_state is empty, meaning state isn't in resources, hence choose PAN India resources
             services_list_by_state = get_essential_services(services_list, "state", "PAN India")
@@ -213,8 +202,7 @@ Type *Services* to see the essential services available in your region.
                 json.dump({"address": geo_location_dict, "context": context}, fp)
             services_menu = get_services_menu(services_keys, "PAN India")
             services_menu = "Sorry, we don't have any information about essential services in your State.\n" + services_menu
-            msg.body(services_menu)
-            responded = True
+            return as_twilio_response(services_menu)
 
     if incoming_msg in constants.numeric_inputs:  # possible range of values for essential service options
         with open('temp.json') as json_data:
@@ -228,13 +216,9 @@ Type *Services* to see the essential services available in your region.
         key = context["keys"][int(incoming_msg)-1]
         services_list = context["services"][key]
         services_message = get_services_message(services_list, key, context["location"])
-        msg.body(services_message)
-        responded = True
+        return as_twilio_response(services_message)
 
-    if not responded:
-        msg.body('Sorry, I did not quite get that. Type *help* to learn how to interact with me.')
-
-    return str(resp)
+    return as_twilio_response(fallback_message)
 
 
 def get_response(url):
