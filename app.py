@@ -120,7 +120,7 @@ Say *hi* to begin an interaction with me anytime.
         state = geo_location_dict.get('state', '')
         state_in_resources = state.replace(state, constants.states_from_resources.get(state, state))
         services_list_by_state = get_essential_services(services_list, "state", state_in_resources)
-        # if services_list_by_state is [], it means state not found in resources.json. Hence, use state="PAN India"
+        # if services_list_by_state is [], it means state not found in resources.json. Use state="PAN India" in that case
         # in that case, mention "We don't have any information on this state, getting information from PAN India
         # pan india also has city as pan state, so no need to filter by city again
 
@@ -148,6 +148,7 @@ Say *hi* to begin an interaction with me anytime.
                 context = {"flow": "choose_service_location",
                            "services": services_list_by_state,
                            "location": state_in_resources,
+                           "location_from": city_in_resources,
                            "location_type": "state_in_resources"
                            }
                 with open('temp.json', 'w') as fp:
@@ -164,7 +165,7 @@ Say *hi* to begin an interaction with me anytime.
             services_list_by_city = get_essential_services(services_list_by_state, "city", "PAN State")
             services_dict_by_category = get_services_by_category(services_list_by_city)  # get services as a dictionary
             # with key as service and value as a list of services with that key
-            services_keys = services_dict_by_category.keys()
+            services_keys = [each for each in services_dict_by_category.keys()]
             context = {"flow": "choose_services",
                        "services": services_dict_by_category,
                        "keys": services_keys,
@@ -186,7 +187,11 @@ Say *hi* to begin an interaction with me anytime.
             print(context)
         if context["flow"] == "choose_service_location":  # only this flow will update the context to set a city
             if incoming_msg == str(1):  # selecting nearest city from the state; display essential services menu for nearest city in resources
-                pass
+                services_list_by_state = context["services"]
+                state = context["location"]
+                geo_location = context["location_from"]
+                nearest_city_in_resources = get_nearest_city_from_geo_location_in_resources(services_list_by_state, state, geo_location)
+
             elif incoming_msg == str(2): # displaying PAN state essential services; this is not services from all cities in the state
                 pass
         if context["flow"] == "choose_services":
@@ -236,8 +241,10 @@ View more: https://www.covid19india.org/
     return data_message
 
 
-def get_geocode():
-    pass
+def get_geocode(city):
+    location = geolocator.geocode(city)
+    coordinates_tuple = (location.latitude, location.longitude)
+    return coordinates_tuple
 
 
 def get_reverse_geocode(coordinates):
@@ -245,6 +252,16 @@ def get_reverse_geocode(coordinates):
     address_dict = location.raw['address']
     print(address_dict)
     return address_dict
+
+
+def get_nearest_city_from_geo_location_in_resources(services_list_by_state, state, city):
+    cities = [each["city"] for each in services_list_by_state]
+    nearest_city = get_nearest_city(cities, city)
+    return nearest_city
+
+
+def get_nearest_city(cities, city):
+    pass
 
 
 def get_location_message(geo_location_dict):
@@ -299,16 +316,6 @@ Deceased: *{delta_deceased}*
     return data_message
 
 
-def get_nearest_city_from_resources(services_list_by_state, state, city):
-    cities = [each["city"] for each in services_list_by_state]
-    nearest_city = get_nearest_city(cities, city)
-    return nearest_city
-
-
-def get_nearest_city(cities, city):
-    pass
-
-
 def get_closest_active_case(*args):
     # get district from city name
     pass
@@ -324,10 +331,10 @@ def get_services_by_category(services_list):
     return services_dict
 
 
-def get_services_menu(services_keys, city):
+def get_services_menu(services_keys, location):
     services_menu = '\n'.join([str(services_keys.index(each)+1)+". "+each for each in services_keys])
     services_menu = f'''
-*Essential Services available in {city}*:
+*Essential Services available in {location}*:
 Reply with the number corresponding to each service to see available services in that category: 
 {services_menu}
 '''
@@ -346,6 +353,7 @@ Essential Services in the category *{key}* available in *{location}*:
 {services_message}
 
 Reply with another number to view the corresponding services.
+Type *Services* to view the Services Menu again.
 
 Visit https://www.covid19india.org/essentials for more.
 '''
