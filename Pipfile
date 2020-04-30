@@ -25,3 +25,4 @@ allow_prereleases = true
 
 [scripts]
 lint = "./lint.sh"
+devserver = "python app.py"
