@@ -111,16 +111,14 @@ Say *Hi* to begin an interaction with me anytime.
         responded = True
 
     if 'distance' in incoming_msg:
-        patient_level_raw_data_api = 'https://api.covid19india.org/raw_data3.json'  # this API keeps changing
-        patient_level_raw_data = get_response(patient_level_raw_data_api)
-        patient_level_raw_data_list = patient_level_raw_data.get('raw_data', [])
         with open('temp.json') as json_data:
             geo_location_dict = json.load(json_data).get("address", {})
             print(geo_location_dict)
         state = geo_location_dict.get('state', '')
         geo_coordinates_tuple = geo_location_dict.get('geo_coordinates')
-        dist, nearest_city = get_minimum_distance(state, geo_coordinates_tuple, patient_level_raw_data_list)
-        distance_message = get_distance_message(dist, nearest_city)
+        district = geo_location_dict.get('state_district', '')
+        distance, location = get_distance(district, state, geo_coordinates_tuple)
+        distance_message = get_distance_message(distance, location)
         extra = f'''
 \n-Type *Cases* to get the lastest cases in your current District.
 -Type *Services* to see the essential services available in your region.
@@ -307,32 +305,16 @@ def get_reverse_geocode(coordinates):
     return address_dict
 
 
-def get_nearest_city(cities, geo_coordinates_tuple):
-    minimum = 20000  # half of circumference of earth
-    nearest_city = ''
-    for city in cities:
-        geocode_city = get_geocode(city)  # a tuple of lat, lon
-        d = geopy.distance.distance(geopy.Point(geocode_city), geopy.Point(geo_coordinates_tuple)).km
-        if d <= minimum:
-            minimum = d
-            nearest_city = city
-    return minimum, nearest_city
+def get_distance(district, state, geo_coordinates_tuple):
+    location = district+', '+state
+    location_coordinates = get_geocode(location)
+    d = geopy.distance.distance(geopy.Point(location_coordinates), geopy.Point(geo_coordinates_tuple)).km
+    d = round(d, 1)
+    return d, location
 
 
-def get_minimum_distance(state, geo_coordinates_tuple, patient_level_raw_data_list):
-    cities = []
-    for each in patient_level_raw_data_list:
-        # if each["detecteddistrict"] and each["detectedstate"] == state and each["currentstatus"] == "Hospitalized":
-        #     cities.append(each["detecteddistrict"]+', '+state)
-        if each["detectedstate"] == state and each["currentstatus"] == "Hospitalized":
-            cities.append(each["detectedstate"])
-    print(cities)
-    minimum_distance, nearest_city = get_nearest_city(cities, geo_coordinates_tuple)
-    return minimum_distance, nearest_city  # city name includes state name as well
-
-
-def get_distance_message(distance, nearest_city):
-    distance_message = "You are approximately {}km from the nearest active case detected in {}.".format(distance, nearest_city)
+def get_distance_message(distance, location):
+    distance_message = "You are approximately {}km from the nearest active case detected in {}.".format(distance, location)
     return distance_message
 
 
