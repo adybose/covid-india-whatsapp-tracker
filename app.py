@@ -1,18 +1,20 @@
 from flask import Flask, request
 import requests
 from twilio.twiml.messaging_response import MessagingResponse
+import geopy
+import geopy.distance
 from geopy.geocoders import Nominatim
 import constants
 import json
 
-# TODO: Type *national* to get the latest country-wide Covid-19 stats.
-# TODO: Get district-wise stats
+# TODO: Type *India* to get the latest country-wide Covid-19 stats.
+# TODO: Get district-wise stats by typing district name
 # TODO: Get distance from your location to nearest active case in your city, district, or state
-# TODO: Get category wise list of essential services near your location
+#       This is only possible if the detected city is known, else the distance will be inaccurate
 # TODO: create a mapping of state, city, and district name aliases
 # TODO: When incoming message is Resources or Cases send default message as:
 #       Your location is set to <the last set location>. To change it, send your location again
-
+# TODO: Access data APIs only when that particular condition is triggered
 
 app = Flask(__name__)
 
@@ -27,7 +29,7 @@ def bot():
     latitude = incoming_values.get('Latitude',  '')
     longitude = incoming_values.get('Longitude', '')
     # geolocator API expects coordinates as a single comma separated string of latitude and longitude
-    geo_coordinates_string = " ,".join((latitude, longitude))
+    geo_coordinates_string = ", ".join((latitude, longitude))
 
     incoming_msg = incoming_values.get('Body', '').lower()
     resp = MessagingResponse()
@@ -35,23 +37,24 @@ def bot():
     responded = False
 
     national_api = 'https://api.covid19india.org/data.json'
-    response = get_response(national_api)
-    statewise_data_list = response.get('statewise')
+    national_data = get_response(national_api)
+    statewise_data_list = national_data.get('statewise')
     state_names = [each["state"].lower() for each in statewise_data_list]
+    state_names = [each if each != 'total' else 'india' for each in state_names]
 
     district_api = 'https://api.covid19india.org/v2/state_district_wise.json'
     states_with_district_list = get_response(district_api)  # list with each element a dict with key "state"
 
     welcome_message = f'''
 Hi there! I am a bot that gives you the latest information on Covid-19 from India.
--Type *Total* to get the latest country-wide Covid-19 stats.
+-Type *India* to get the latest country-wide Covid-19 stats.
 -Type the exact name of a state to get it's latest Covid-19 stats.
 -Send your location to get the latest stats from your district along with essential services available in your region.
--Type *help* anytime to to learn how to interact with me.
+-Type *Help* anytime to to learn how to interact with me.
 '''
 
     help_message = f'''
-Say *hi* to begin an interaction with me anytime.
+Say *Hi* to begin an interaction with me anytime.
 -Type *Total* to get the latest country-wide Covid-19 stats.
 -Type the exact name of a state to get it's latest Covid-19 stats.
 -Send your location to get the latest stats from your district along with essential services available in your region.
@@ -80,8 +83,10 @@ Say *hi* to begin an interaction with me anytime.
         responded = True
 
     if latitude:
-        # TODO: Replace temporary file operation with nosql DB like mongoDB
-        geo_location_dict = get_reverse_geocode(geo_coordinates_string)  # tuple of city, state
+        geo_location_dict = get_reverse_geocode(geo_coordinates_string)  # dictionary of complete address
+        geo_coordinates_tuple = (float(latitude), float(longitude))
+        print(type(geo_coordinates_tuple))
+        geo_location_dict.update({"geo_coordinates": geo_coordinates_tuple})
         location_message = get_location_message(geo_location_dict)
         msg.body(location_message)
         # save geo_location_dict with MessageSID on a temporary file
@@ -99,10 +104,26 @@ Say *hi* to begin an interaction with me anytime.
         district_data = get_district_data(states_with_district_list, district, state)
         district_data_message = get_district_data_message(district_data)
         extra = f'''
-\nType *Distance* to get the distance from the closest detected active case in your State from your location.
-Type *Services* to see the essential services available in your region.
+\n-Type *Distance* to get your distance from the closest detected active case in your State.
+-Type *Services* to see the essential services available in your region.
 '''
         msg.body(district_data_message+extra)
+        responded = True
+
+    if 'distance' in incoming_msg:
+        with open('temp.json') as json_data:
+            geo_location_dict = json.load(json_data).get("address", {})
+            print(geo_location_dict)
+        state = geo_location_dict.get('state', '')
+        geo_coordinates_tuple = geo_location_dict.get('geo_coordinates')
+        district = geo_location_dict.get('state_district', '')
+        distance, location = get_distance(district, state, geo_coordinates_tuple)
+        distance_message = get_distance_message(distance, location)
+        extra = f'''
+\n-Type *Cases* to get the lastest cases in your current District.
+-Type *Services* to see the essential services available in your region.
+'''
+        msg.body(distance_message+extra)
         responded = True
 
     if 'services' in incoming_msg:
@@ -148,7 +169,7 @@ Type *Services* to see the essential services available in your region.
                 msg.body(services_menu)
                 responded = True
             elif "PAN State" in cities_in_state_in_resources:
-                # city not found in essential services list for the given state use PAN state
+                # city not found in essential services list for the given state; use PAN State
                 services_list_by_city = get_essential_services(services_list_by_state, "city", "PAN State")
                 services_dict_by_category = get_services_by_category(services_list_by_city)
                 services_keys = [each for each in services_dict_by_category.keys()]
@@ -164,7 +185,7 @@ Type *Services* to see the essential services available in your region.
                 msg.body(services_menu)
                 responded = True
             elif "All Districts" in cities_in_state_in_resources:
-                # city not found in essential services list for the given state use PAN state
+                # city not found in essential services list for the given state; use All Districts
                 services_list_by_city = get_essential_services(services_list_by_state, "city", "All Districts")
                 services_dict_by_category = get_services_by_category(services_list_by_city)
                 services_keys = [each for each in services_dict_by_category.keys()]
@@ -284,17 +305,22 @@ def get_reverse_geocode(coordinates):
     return address_dict
 
 
-def get_nearest_city_from_geo_location_in_resources(services_list_by_state, state, city):
-    cities = [each["city"] for each in services_list_by_state]
-    nearest_city = get_nearest_city(cities, city)
-    return nearest_city
+def get_distance(district, state, geo_coordinates_tuple):
+    location = district+', '+state
+    location_coordinates = get_geocode(location)
+    d = geopy.distance.distance(geopy.Point(location_coordinates), geopy.Point(geo_coordinates_tuple)).km
+    d = round(d, 1)
+    return d, location
 
 
-def get_nearest_city(cities, city):
-    pass
+def get_distance_message(distance, location):
+    distance_message = "You are approximately {}km from the nearest active case detected in {}.".format(distance, location)
+    return distance_message
 
 
 def get_location_message(geo_location_dict):
+    # TODO: Add county along with district and state as default location to add to address
+    # or add entire address, but remove 'country_code': 'in'
     village = geo_location_dict.get('village', '')
     city = geo_location_dict.get('city', '')
     district = geo_location_dict.get('state_district', '')
@@ -308,6 +334,7 @@ def get_location_message(geo_location_dict):
     location_message = f'''
 Your detected location is {address}.
 -Type *Cases* to get the lastest cases in your current District.
+-Type *Distance* to get your distance from the closest detected active case in your State.
 -Type *Services* to see the essential services available in your region.
 '''
     return location_message
@@ -342,13 +369,7 @@ Confirmed: *{delta_confirmed}*
 Recovered: *{delta_recovered}*
 Deceased: *{delta_deceased}*
 '''
-# Type *Services* to see the essential services available in your region.
     return data_message
-
-
-def get_closest_active_case(*args):
-    # get district from city name
-    pass
 
 
 def get_services_by_category(services_list):
