@@ -2,19 +2,19 @@
 
 A WhatsApp bot to track COVID-19 cases in India, powered by Twilio.
 
-### Motivation
+### Motivation 💡
 
 There is an ocean of information about COVID-19 on the Internet, but WhatsApp still remains the primary source for a vast majority of people. We provide clutter-free information to help you stay informed of COVID-19 cases around you, and be prepared for any eventuality.
 
 ### Features
 
-- **Get country and state-wide statistics**.
+- **Get country and state-wide statistics** 📉 
   * Cumulative total, active, and new cases since last update.
   * Number of patients confirmed, recovered, and deceased.
-- **Share your WhatsApp location**.
+- **Share your WhatsApp location** 📌
   * Get localized statistics on the number of cases.
   * Get distance from the closest detected active case.
-- **Find essential services around you**.
+- **Find essential services around you** 🏥 
   * COVID-19 testing labs.
   * Emergency healthcare services.
   * Free food.
