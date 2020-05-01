@@ -1,7 +1,8 @@
 from flask import Flask, request
 import requests
 from twilio.twiml.messaging_response import MessagingResponse
-from geopy.distance import distance
+import geopy
+import geopy.distance
 from geopy.geocoders import Nominatim
 import constants
 import json
@@ -39,24 +40,21 @@ def bot():
     national_data = get_response(national_api)
     statewise_data_list = national_data.get('statewise')
     state_names = [each["state"].lower() for each in statewise_data_list]
+    state_names = [each if each != 'total' else 'india' for each in state_names]
 
     district_api = 'https://api.covid19india.org/v2/state_district_wise.json'
     states_with_district_list = get_response(district_api)  # list with each element a dict with key "state"
 
-    patient_level_raw_data_api = 'https://api.covid19india.org/raw_data3.json'  # this API keeps changing
-    patient_level_raw_data = get_response(patient_level_raw_data_api)
-    patient_level_raw_data_list = patient_level_raw_data.get('raw_data', [])
-
     welcome_message = f'''
 Hi there! I am a bot that gives you the latest information on Covid-19 from India.
--Type *Total* to get the latest country-wide Covid-19 stats.
+-Type *India* to get the latest country-wide Covid-19 stats.
 -Type the exact name of a state to get it's latest Covid-19 stats.
 -Send your location to get the latest stats from your district along with essential services available in your region.
--Type *help* anytime to to learn how to interact with me.
+-Type *Help* anytime to to learn how to interact with me.
 '''
 
     help_message = f'''
-Say *hi* to begin an interaction with me anytime.
+Say *Hi* to begin an interaction with me anytime.
 -Type *Total* to get the latest country-wide Covid-19 stats.
 -Type the exact name of a state to get it's latest Covid-19 stats.
 -Send your location to get the latest stats from your district along with essential services available in your region.
@@ -87,6 +85,7 @@ Say *hi* to begin an interaction with me anytime.
     if latitude:
         geo_location_dict = get_reverse_geocode(geo_coordinates_string)  # dictionary of complete address
         geo_coordinates_tuple = (float(latitude), float(longitude))
+        print(type(geo_coordinates_tuple))
         geo_location_dict.update({"geo_coordinates": geo_coordinates_tuple})
         location_message = get_location_message(geo_location_dict)
         msg.body(location_message)
@@ -112,13 +111,16 @@ Say *hi* to begin an interaction with me anytime.
         responded = True
 
     if 'distance' in incoming_msg:
+        patient_level_raw_data_api = 'https://api.covid19india.org/raw_data3.json'  # this API keeps changing
+        patient_level_raw_data = get_response(patient_level_raw_data_api)
+        patient_level_raw_data_list = patient_level_raw_data.get('raw_data', [])
         with open('temp.json') as json_data:
             geo_location_dict = json.load(json_data).get("address", {})
             print(geo_location_dict)
         state = geo_location_dict.get('state', '')
         geo_coordinates_tuple = geo_location_dict.get('geo_coordinates')
-        distance, nearest_city = get_minimum_distance(state, geo_coordinates_tuple, patient_level_raw_data_list)
-        distance_message = get_distance_message(distance, nearest_city)
+        dist, nearest_city = get_minimum_distance(state, geo_coordinates_tuple, patient_level_raw_data_list)
+        distance_message = get_distance_message(dist, nearest_city)
         extra = f'''
 \n-Type *Cases* to get the lastest cases in your current District.
 -Type *Services* to see the essential services available in your region.
@@ -307,9 +309,10 @@ def get_reverse_geocode(coordinates):
 
 def get_nearest_city(cities, geo_coordinates_tuple):
     minimum = 20000  # half of circumference of earth
+    nearest_city = ''
     for city in cities:
         geocode_city = get_geocode(city)  # a tuple of lat, lon
-        d = distance.distance(geocode_city, geo_coordinates_tuple).km
+        d = geopy.distance.distance(geopy.Point(geocode_city), geopy.Point(geo_coordinates_tuple)).km
         if d <= minimum:
             minimum = d
             nearest_city = city
@@ -319,8 +322,11 @@ def get_nearest_city(cities, geo_coordinates_tuple):
 def get_minimum_distance(state, geo_coordinates_tuple, patient_level_raw_data_list):
     cities = []
     for each in patient_level_raw_data_list:
-        if each["detectedcity"] and each["detectedstate"] == state and each["currentstatus"] == "Hospitalized":
-            cities.append(each["detectedcity"]+', '+state)
+        # if each["detecteddistrict"] and each["detectedstate"] == state and each["currentstatus"] == "Hospitalized":
+        #     cities.append(each["detecteddistrict"]+', '+state)
+        if each["detectedstate"] == state and each["currentstatus"] == "Hospitalized":
+            cities.append(each["detectedstate"])
+    print(cities)
     minimum_distance, nearest_city = get_nearest_city(cities, geo_coordinates_tuple)
     return minimum_distance, nearest_city  # city name includes state name as well
 
