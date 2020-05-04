@@ -31,6 +31,9 @@ def bot():
     # geolocator API expects coordinates as a single comma separated string of latitude and longitude
     geo_coordinates_string = ", ".join((latitude, longitude))
 
+    user_number = incoming_values.get('From', '')
+    user_file_name = 'temp_'+user_number+'.json'
+    print(user_file_name)
     incoming_msg = incoming_values.get('Body', '').lower()
     resp = MessagingResponse()
     msg = resp.message()
@@ -45,27 +48,9 @@ def bot():
     district_api = 'https://api.covid19india.org/v2/state_district_wise.json'
     states_with_district_list = get_response(district_api)  # list with each element a dict with key "state"
 
-    welcome_message = f'''
-Hi there! I am a bot that gives you the latest information on Covid-19 from India.
--Type *India* to get the latest country-wide Covid-19 stats.
--Type the exact name of a state to get it's latest Covid-19 stats.
--Send your location to get the latest stats from your district along with essential services available in your region.
--Type *Help* anytime to to learn how to interact with me.
-'''
-
-    help_message = f'''
-Say *Hi* to begin an interaction with me anytime.
--Type *Total* to get the latest country-wide Covid-19 stats.
--Type the exact name of a state to get it's latest Covid-19 stats.
--Send your location to get the latest stats from your district along with essential services available in your region.
-'''
-
-    fallback_message = 'Sorry, I did not quite get that. Type *help* to learn how to interact with me.'
-
-    greeting_tokens = ['hi', 'hello', 'hey']
-    if incoming_msg in greeting_tokens:
+    if incoming_msg in constants.greeting_tokens:
         # return greeting message
-        msg.body(welcome_message)
+        msg.body(constants.welcome_message)
         responded = True
 
     if incoming_msg in state_names:
@@ -79,23 +64,23 @@ Say *Hi* to begin an interaction with me anytime.
 
     if 'help' in incoming_msg:
         # return help message
-        msg.body(help_message)
+        msg.body(constants.help_message)
         responded = True
 
     if latitude:
         geo_location_dict = get_reverse_geocode(geo_coordinates_string)  # dictionary of complete address
         geo_coordinates_tuple = (float(latitude), float(longitude))
-        print(type(geo_coordinates_tuple))
+        print(geo_coordinates_tuple)
         geo_location_dict.update({"geo_coordinates": geo_coordinates_tuple})
         location_message = get_location_message(geo_location_dict)
         msg.body(location_message)
         # save geo_location_dict with MessageSID on a temporary file
-        with open('temp.json', 'w') as fp:
+        with open(user_file_name, 'w') as fp:
             json.dump({"address": geo_location_dict}, fp)
         responded = True
 
     if 'cases' in incoming_msg:
-        with open('temp.json') as json_data:
+        with open(user_file_name) as json_data:
             geo_location_dict = json.load(json_data).get("address", {})
             print(geo_location_dict)
         district = geo_location_dict.get('state_district', '')  # district is not lowercase
@@ -111,7 +96,7 @@ Say *Hi* to begin an interaction with me anytime.
         responded = True
 
     if 'distance' in incoming_msg:
-        with open('temp.json') as json_data:
+        with open(user_file_name) as json_data:
             geo_location_dict = json.load(json_data).get("address", {})
             print(geo_location_dict)
         state = geo_location_dict.get('state', '')
@@ -127,15 +112,13 @@ Say *Hi* to begin an interaction with me anytime.
         responded = True
 
     if 'services' in incoming_msg:
-        # TODO: Get services from district or PAN State (All Districts) or PAN India
         # some cities are named differently in the resources.json API, eg Delhi
         # if a city is not found, set district city as the city in resources.json
         # if district city not found in resources.json, get nearest city from resources.json in the state
-        # after getting a city show categories which includes pan country and pan state as category too?
         # PAN India is a state and PAN State is a city as filter in resources.json
         # if a city/district is not found as a city in resources.json, the city will be set as PAN State
-        # if a state is not found in resources.json the state will be as PAN state
-        with open('temp.json') as json_data:
+        # if a state is not found in resources.json the state will be as PAN India
+        with open(user_file_name) as json_data:
             geo_location_dict = json.load(json_data).get("address", {})
             print(geo_location_dict)
 
@@ -146,7 +129,7 @@ Say *Hi* to begin an interaction with me anytime.
         state_in_resources = state.replace(state, constants.states_from_resources.get(state, state))
         services_list_by_state = get_essential_services(services_list, "state", state_in_resources)
         # if services_list_by_state is [], it means state not found in resources.json. Use state="PAN India" in that case
-        # pan india also has city as pan state, so no need to filter by city again
+        # PAN India also has city as PAN State, so no need to filter by city again
 
         city = geo_location_dict.get('city', '')
         if not city:  # city is not found in geo_location_dict, eg location is a village
@@ -163,7 +146,7 @@ Say *Hi* to begin an interaction with me anytime.
                     "keys": services_keys,
                     "location": city_in_resources
                 }
-                with open('temp.json', 'w') as fp:
+                with open(user_file_name, 'w') as fp:
                     json.dump({"address": geo_location_dict, "context": context}, fp)
                 services_menu = get_services_menu(services_keys, city_in_resources)
                 msg.body(services_menu)
@@ -178,7 +161,7 @@ Say *Hi* to begin an interaction with me anytime.
                     "keys": services_keys,
                     "location": "PAN State"
                 }
-                with open('temp.json', 'w') as fp:
+                with open(user_file_name, 'w') as fp:
                     json.dump({"address": geo_location_dict, "context": context}, fp)
                 services_menu = get_services_menu(services_keys, "PAN State")
                 services_menu = "Sorry, we don't have any information about essential services in your location.\n" + services_menu
@@ -194,7 +177,7 @@ Say *Hi* to begin an interaction with me anytime.
                     "keys": services_keys,
                     "location": "All Districts"
                 }
-                with open('temp.json', 'w') as fp:
+                with open(user_file_name, 'w') as fp:
                     json.dump({"address": geo_location_dict, "context": context}, fp)
                 services_menu = get_services_menu(services_keys, "All Districts")
                 services_menu = "Sorry, we don't have any information about essential services in your location.\n" + services_menu
@@ -205,14 +188,13 @@ Say *Hi* to begin an interaction with me anytime.
                 services_list_by_city = get_essential_services(services_list_by_state, "city", "PAN State")
                 services_dict_by_category = get_services_by_category(
                     services_list_by_city)  # get services as a dictionary
-                # with key as service and value as a list of services with that key
                 services_keys = [each for each in services_dict_by_category.keys()]
                 context = {
                     "services": services_dict_by_category,
                     "keys": services_keys,
                     "location": "PAN India",
                 }
-                with open('temp.json', 'w') as fp:
+                with open(user_file_name, 'w') as fp:
                     json.dump({"address": geo_location_dict, "context": context}, fp)
                 services_menu = get_services_menu(services_keys, "PAN India")
                 services_menu = "Sorry, we don't have any information about essential services in your location.\n" + services_menu
@@ -222,15 +204,14 @@ Say *Hi* to begin an interaction with me anytime.
         else:  # if services_list_by_state is empty, meaning state isn't in resources, hence choose PAN India resources
             services_list_by_state = get_essential_services(services_list, "state", "PAN India")
             services_list_by_city = get_essential_services(services_list_by_state, "city", "PAN State")
-            services_dict_by_category = get_services_by_category(services_list_by_city)  # get services as a dictionary
-            # with key as service and value as a list of services with that key
+            services_dict_by_category = get_services_by_category(services_list_by_city)
             services_keys = [each for each in services_dict_by_category.keys()]
             context = {
                 "services": services_dict_by_category,
                 "keys": services_keys,
                 "location": "PAN India",
             }
-            with open('temp.json', 'w') as fp:
+            with open(user_file_name, 'w') as fp:
                 json.dump({"address": geo_location_dict, "context": context}, fp)
             services_menu = get_services_menu(services_keys, "PAN India")
             services_menu = "Sorry, we don't have any information about essential services in your State.\n" + services_menu
@@ -238,14 +219,13 @@ Say *Hi* to begin an interaction with me anytime.
             responded = True
 
     if incoming_msg in constants.numeric_inputs:  # possible range of values for essential service options
-        with open('temp.json') as json_data:
+        with open(user_file_name) as json_data:
             geo_location_dict = json.load(json_data).get("address", {})
             print(geo_location_dict)
-        with open('temp.json') as json_data:
+        with open(user_file_name) as json_data:
             context = json.load(json_data).get("context", {})
             print(context)
-        # TODO: Handle keys index issue.
-        # If key is outside the keys range of services, show exception message
+        # TODO: Handle keys index issue. If key is outside the keys range of services, show exception message
         key = context["keys"][int(incoming_msg)-1]
         services_list = context["services"][key]
         services_message = get_services_message(services_list, key, context["location"])
@@ -323,14 +303,15 @@ def get_location_message(geo_location_dict):
     # or add entire address, but remove 'country_code': 'in'
     village = geo_location_dict.get('village', '')
     city = geo_location_dict.get('city', '')
+    county = geo_location_dict.get('county', '')
     district = geo_location_dict.get('state_district', '')
     state = geo_location_dict.get('state', '')
     if city:
-        address = ', '.join([city, district, state])
+        address = ', '.join([city, county, district, state])
     elif village:
-        address = ', '.join([village, district, state])
+        address = ', '.join([village, county, district, state])
     else:
-        address = ', '.join([district, state])
+        address = ', '.join([county, district, state])
     location_message = f'''
 Your detected location is {address}.
 -Type *Cases* to get the lastest cases in your current District.
@@ -397,7 +378,7 @@ def get_services_message(services_list, key, location):
     for service in services_list:
         phone_numbers = service["phonenumber"].split(',\n')
         # each service is a dict, and we need to extract their values
-        services.append('*'+service["nameoftheorganisation"]+'*'+'\nContact: '+'*'+service["contact"]+'*'+"\nPhone: "+'*'+', '.join(phone_numbers)+'*')
+        services.append('*'+service["nameoftheorganisation"]+'*'+'\nContact: '+service["contact"]+"\nPhone: "+'*'+', '.join(phone_numbers)+'*')
     services_message = '\n'.join(str(services.index(each)+1)+". "+each for each in services)
     services_message = f'''
 Essential Services in the category *{key}* available in *{location}*: 
@@ -417,7 +398,6 @@ def get_essential_services(services_list, key, value):
     # if services_list is statewise, key is "city" and value is city name. return is citywise services list
     filtered_services_list = [each for each in services_list if each[key] == value]
     return filtered_services_list
-####
 
 
 if __name__ == '__main__':
