@@ -19,7 +19,7 @@ import json
 
 app = Flask(__name__)
 
-geolocator = Nominatim(user_agent="covid_bot", timeout=5)
+geolocator = Nominatim(user_agent="covid-bot", timeout=5)
 
 
 @app.route('/bot', methods=['POST'])
@@ -105,7 +105,7 @@ def bot():
         distance, location = get_distance(district, state, geo_coordinates_tuple)
         distance_message = get_distance_message(distance, location)
         extra = f'''
-\n-Type *Cases* to get the lastest cases in your current District.
+\n-Type *Cases* to get the latest cases in your current District.
 -Type *Services* to see the essential services available in your region.
 '''
         msg.body(distance_message+extra)
