@@ -13,7 +13,7 @@ There is an ocean of information about COVID-19 on the Internet, but WhatsApp st
   * Number of patients confirmed, recovered, and deceased.
 - **Share your WhatsApp location** 📌
   * Get localized statistics on the number of cases.
-  * Get distance from the closest detected active case.
+  * Find which zone you fall in.
 - **Find essential services around you** 🏥 
   * COVID-19 testing labs.
   * Emergency healthcare services.
