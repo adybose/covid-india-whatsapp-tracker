@@ -7,7 +7,7 @@ from geopy.geocoders import Nominatim
 import constants
 import json
 
-# TODO: Type *India* to get the latest country-wide Covid-19 stats.
+
 # TODO: Get district-wise stats by typing district name
 # TODO: Get distance from your location to nearest active case in your city, district, or state
 #       This is only possible if the detected city is known, else the distance will be inaccurate
@@ -15,6 +15,7 @@ import json
 # TODO: When incoming message is Resources or Cases send default message as:
 #       Your location is set to <the last set location>. To change it, send your location again
 # TODO: Access data APIs only when that particular condition is triggered
+
 
 app = Flask(__name__)
 
@@ -32,7 +33,7 @@ def bot():
     geo_coordinates_string = ", ".join((latitude, longitude))
 
     user_number = incoming_values.get('From', '')
-    user_file_name = 'temp_'+user_number+'.json'
+    user_file_name = user_number+'.json'
     print(user_file_name)
     incoming_msg = incoming_values.get('Body', '').lower()
     resp = MessagingResponse()
@@ -89,8 +90,7 @@ def bot():
         district_data = get_district_data(states_with_district_list, district, state)
         district_data_message = get_district_data_message(district_data)
         extra = f'''
-\n-Type *Distance* to get your distance from the closest detected active case in your State.
--Type *Services* to see the essential services available in your region.
+\n-Type *Services* to see the essential services available in your region.
 '''
         msg.body(district_data_message+extra)
         responded = True
@@ -312,10 +312,13 @@ def get_location_message(geo_location_dict):
         address = ', '.join([village, county, district, state])
     else:
         address = ', '.join([county, district, state])
+    zone = get_zone_information(district)
+    zone_message = ''
+    if zone:
+        zone_message = '-You are in the *{}* zone.'.format(zone)
     location_message = f'''
 Your detected location is {address}.
--Type *Cases* to get the lastest cases in your current District.
--Type *Distance* to get your distance from the closest detected active case in your State.
+{zone_message}
 -Type *Services* to see the essential services available in your region.
 '''
     return location_message
@@ -328,6 +331,15 @@ def get_district_data(states_with_district_list, district, state):
                 if district == district_data['district']:  # district is not lowercase
                     return district_data
 
+
+def get_zone_information(district):
+    zones_api = 'https://api.covid19india.org/zones.json'
+    zones_list = get_response(zones_api).get('zones', [])
+    for each in zones_list:
+        if each["district"] in district:
+            zone = each["zone"]
+            break
+    return zone
 
 def get_district_data_message(data):
     active = data.get('active')
