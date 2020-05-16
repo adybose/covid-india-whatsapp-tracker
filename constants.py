@@ -1,13 +1,37 @@
-districts = {'Pune District': 'Pune',
-             'Hugli': 'Hooghly'}
+# stores common constant values in one place
 
-# states = {'India': 'Total'}
+country_common_names = {
+    "us": "usa",
+    "usa": "usa",
+    "united states": "usa",
+    "united states of america": "usa",
+    "uk": "uk",
+    "united kingdom": "uk",
+    "britain": "uk",
+    "great britain": "uk",
+    "england": "uk",
+    "uae": "uae",
+    "united arab emirates": "uae",
+    "guinea-bissau": "guinea-bissau",
+    "guinea bissau": "guinea-bissau",
+    "timor-leste": "timor-leste",
+    "timor leste": "timor-leste",
+    "s. korea": "s. korea",
+    "s.korea": "s. korea",
+    "south korea": "s. korea"
+}  # a map of common names of countries that users can send in their message
 
-city_from_resources = {}
+districts = {
+    'Pune District': 'Pune',
+    'Hugli': 'Hooghly'
+}
 
-states_from_resources = {'Andaman and Nicobar Islands': 'Andaman & Nicobar',
-                         'Jammu and Kashmir': 'Jammu & Kashmir'
-                         }
+# city_from_resources = {}
+
+states_from_resources = {
+    'Andaman and Nicobar Islands': 'Andaman & Nicobar',
+    'Jammu and Kashmir': 'Jammu & Kashmir'
+}
 
 numeric_inputs = [str(each) for each in range(1, 17)]
 

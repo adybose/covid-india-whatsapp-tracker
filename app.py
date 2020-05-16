@@ -6,14 +6,20 @@ import geopy.distance
 from geopy.geocoders import Nominatim
 import constants
 import json
+import utils
+from utils import world_tracker
 
 
+# TODO: Update Pipfile to include lxml as dependency
+# TODO: Fetch country-wise data from worldometers since you are already redirecting to that site in the other project
+# TODO: Fetch country-wise date from an API and map the countries to Worldometers country Page
+# TODO: Anonymize temp_user_files and create a good schema
 # TODO: Get district-wise stats by typing district name
-# TODO: Get distance from your location to nearest active case in your city, district, or state
+# TODO: Get distance from your location to nearest active case in your location/city/district
 #       This is only possible if the detected city is known, else the distance will be inaccurate
 # TODO: create a mapping of state, city, and district name aliases
 # TODO: When incoming message is Resources or Cases send default message as:
-#       Your location is set to <the last set location>. To change it, send your location again
+#       "Your location is set to <the last set location>. To change it, send your location again."
 # TODO: Access data APIs only when that particular condition is triggered
 
 
@@ -40,11 +46,16 @@ def bot():
     msg = resp.message()
     responded = False
 
+    # global stats from worldometers
+    country_names, country_common_names, countrywise_api = world_tracker()
+    print(country_common_names)
+    print(country_common_names.keys())
+    # india level data
     national_api = 'https://api.covid19india.org/data.json'
     national_data = get_response(national_api)
     statewise_data_list = national_data.get('statewise')
     state_names = [each["state"].lower() for each in statewise_data_list]
-    state_names = [each if each != 'total' else 'india' for each in state_names]
+    state_names = [each if each != 'total' else 'india' for each in state_names]  # refactor to single operation
 
     district_api = 'https://api.covid19india.org/v2/state_district_wise.json'
     states_with_district_list = get_response(district_api)  # list with each element a dict with key "state"
@@ -52,6 +63,16 @@ def bot():
     if incoming_msg in constants.greeting_tokens:
         # return greeting message
         msg.body(constants.welcome_message)
+        responded = True
+
+    if incoming_msg in country_common_names.keys() or incoming_msg in country_names:
+        # return cases
+        country = country_common_names[incoming_msg] if incoming_msg in country_common_names.keys() else incoming_msg
+        i = country_names.index(country)
+        url = countrywise_api[i]
+        doc = utils.get_document(url)
+        data_message = utils.get_data_message(country, url, doc)
+        msg.body(data_message)
         responded = True
 
     if incoming_msg in state_names:
@@ -225,7 +246,7 @@ def bot():
         with open(user_file_name) as json_data:
             context = json.load(json_data).get("context", {})
             print(context)
-        # TODO: Handle keys index issue. If key is outside the keys range of services, show exception message
+        # TODO: Handle keys index issue. If key is outside the keys range of services or outside context, show exception message
         key = context["keys"][int(incoming_msg)-1]
         services_list = context["services"][key]
         services_message = get_services_message(services_list, key, context["location"])
